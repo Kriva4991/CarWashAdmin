@@ -16,7 +16,7 @@ import urllib.error
 CURRENT_VERSION = "3.0.0"
 
 # URL для проверки обновлений (GitHub)
-UPDATE_URL = "https://github.com/Kriva4991/CarWashAdmin/releases/latest/download/CarWashAdmin_Setup.exe"
+UPDATE_URL = "https://raw.githubusercontent.com/Kriva4991/CarWashAdmin/main/version.json"
 
 
 class UpdateInfo:
