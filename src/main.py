@@ -92,7 +92,7 @@ def check_license_ui(window, license_mgr):
             window.tabs.setCurrentIndex(4)
             # Блокируем все вкладки кроме настроек
             for i in range(window.tabs.count()):
-                if i != 4:
+                if i != 5:
                     window.tabs.widget(i).setEnabled(False)
         else:
             # Закрываем приложение

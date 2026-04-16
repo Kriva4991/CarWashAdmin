@@ -2,12 +2,12 @@
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QTabWidget, QTableWidget, QTableWidgetItem, QPushButton,
-    QLabel, QHeaderView, QMessageBox, QFileDialog, QScrollArea, QFrame, QLineEdit, QComboBox
+    QLabel, QHeaderView, QMessageBox, QFileDialog, QScrollArea,
+    QFrame, QLineEdit, QComboBox, QScrollArea
 )
 from PyQt6.QtCore import Qt, QEvent, QTimer
 from PyQt6.QtGui import QColor, QKeySequence, QShortcut
 from database import get_connection, DB_PATH
-import csv
 import os
 from datetime import datetime
 from ui.reports_tab import ReportsTab
@@ -444,12 +444,6 @@ class CarWashMainWindow(QMainWindow):
         return card
     
     def change_order_status_by_button(self, order_id: int):
-        """Меняет статус заказа"""
-        from services.user_service import user_service
-        if not user_service.has_permission('change_order_status'):
-            QMessageBox.warning(self, "⛔ Доступ запрещён", "У вас нет прав для изменения статуса!")
-            return
-        
         """Меняет статус заказа только вперёд (queue → process → done)"""
         conn = get_connection()
         cursor = conn.cursor()
@@ -475,36 +469,234 @@ class CarWashMainWindow(QMainWindow):
         conn.commit()
         conn.close()
         
-        self.load_orders()
-        self.statusBar().showMessage(tr("orders.status_changed") + f" #{order_id}")
+        # 🆕 Перемещаем карточку (работает для всех переходов)
+        self._move_order_card(order_id, current_status, new_status)
+        
+        # Обновляем статистику
+        self._update_statistics_after_status_change(current_status, new_status)
+        
+        self.statusBar().showMessage(f"✅ Статус заказа #{order_id} изменён")
+
+    def _move_order_card(self, order_id: int, old_status: str, new_status: str):
+        """Перемещает карточку заказа между группами без сдвига интерфейса"""
+        old_layout = None
+        if old_status == 'queue':
+            old_layout = self.queue_layout
+        elif old_status == 'process':
+            old_layout = self.process_layout
+        elif old_status == 'done':
+            old_layout = self.done_layout
+        
+        new_layout = None
+        if new_status == 'queue':
+            new_layout = self.queue_layout
+        elif new_status == 'process':
+            new_layout = self.process_layout
+        elif new_status == 'done':
+            new_layout = self.done_layout
+        
+        if not old_layout or not new_layout:
+            print(f"⚠️ Не найден layout: old={old_status} -> new={new_status}")
+            return
+        
+        # 🆕 Сохраняем позицию скролла ДО изменений
+        scroll_area = self._find_scroll_area()
+        scroll_value = scroll_area.verticalScrollBar().value() if scroll_area else 0
+        
+        # Находим карточку и её высоту
+        widget_to_move = None
+        card_height = 0
+        for i in range(old_layout.count()):
+            item = old_layout.itemAt(i)
+            if item and item.widget():
+                widget = item.widget()
+                if widget.property('order_id') == order_id:
+                    widget_to_move = widget
+                    card_height = widget.height() + old_layout.spacing()
+                    old_layout.removeWidget(widget)
+                    break
+        
+        if widget_to_move:
+            # Обновляем свойство статуса
+            widget_to_move.setProperty('order_status', new_status)
+            
+            # Обновляем текст кнопки
+            self._update_card_button(widget_to_move, new_status)
+            
+            # Добавляем в начало новой группы
+            new_layout.insertWidget(0, widget_to_move)
+            
+            # Обновляем видимость групп
+            self.queue_group.setVisible(self._has_visible_cards(self.queue_layout))
+            self.process_group.setVisible(self._has_visible_cards(self.process_layout))
+            self.done_group.setVisible(self._has_visible_cards(self.done_layout))
+            
+            # 🆕 Компенсируем сдвиг: возвращаем скролл на место
+            if scroll_area:
+                # Если перемещаем НЕ в ту же группу, нужно скомпенсировать исчезновение карточки
+                if old_status != new_status:
+                    scroll_area.verticalScrollBar().setValue(scroll_value + card_height)
+                else:
+                    scroll_area.verticalScrollBar().setValue(scroll_value)
+
+    def _find_scroll_area(self):
+        """Находит ScrollArea содержащий группы заказов"""
+        # Ищем через родительские виджеты
+        if hasattr(self, 'queue_group') and self.queue_group:
+            parent = self.queue_group.parent()
+            while parent:
+                if isinstance(parent, QScrollArea):
+                    return parent
+                parent = parent.parent()
+        return None
+
+    def _scroll_to_group(self, status: str):
+        """Прокручивает область к указанной группе"""
+        group = None
+        if status == 'queue':
+            group = self.queue_group
+        elif status == 'process':
+            group = self.process_group
+        elif status == 'done':
+            group = self.done_group
+        
+        if group and group.isVisible():
+            # Находим ScrollArea (родитель контейнера групп)
+            scroll_area = None
+            parent = group.parent()
+            while parent:
+                if isinstance(parent, QScrollArea):
+                    scroll_area = parent
+                    break
+                parent = parent.parent()
+            
+            if scroll_area:
+                # Прокручиваем так, чтобы группа была видна
+                scroll_area.ensureWidgetVisible(group, 0, 50)
+
+    def _update_card_button(self, card: QFrame, new_status: str):
+        """Обновляет кнопку статуса на карточке"""
+        # Находим кнопку внутри карточки
+        for child in card.findChildren(QPushButton):
+            if child.text() in ["▶ В работу", "✓ Готово"]:
+                if new_status == 'queue':
+                    child.setText("▶ В работу")
+                    child.setStyleSheet("""
+                        QPushButton {
+                            background-color: #3498db;
+                            color: white;
+                            border: none;
+                            border-radius: 4px;
+                            font-size: 12px;
+                            font-weight: bold;
+                        }
+                    """)
+                elif new_status == 'process':
+                    child.setText("✓ Готово")
+                    child.setStyleSheet("""
+                        QPushButton {
+                            background-color: #27ae60;
+                            color: white;
+                            border: none;
+                            border-radius: 4px;
+                            font-size: 12px;
+                            font-weight: bold;
+                        }
+                    """)
+                elif new_status == 'done':
+                    child.hide()
+                break
+
+    def _update_statistics_after_status_change(self, old_status: str, new_status: str):
+        """Обновляет только статистику без перезагрузки"""
+        # Получаем текущие значения из лейблов
+        today_text = self.today_orders_label.text()
+        revenue_text = self.today_revenue_label.text()
+        progress_text = self.in_progress_label.text()
+        
+        # Парсим числа
+        import re
+        today_match = re.search(r'(\d+)', today_text)
+        revenue_match = re.search(r'(\d+)', revenue_text)
+        progress_match = re.search(r'(\d+)', progress_text)
+        
+        today_orders = int(today_match.group(1)) if today_match else 0
+        today_revenue = int(revenue_match.group(1)) if revenue_match else 0
+        in_progress = int(progress_match.group(1)) if progress_match else 0
+        
+        # Обновляем счётчики
+        if new_status == 'process':
+            in_progress += 1
+        elif old_status == 'process' and new_status == 'done':
+            in_progress -= 1
+        
+        # Обновляем лейблы
+        orders_word = tr("orders.orders_count", default="заказов")
+        self.today_orders_label.setText(f"{tr('orders.today')}\n{today_orders} {orders_word}")
+        self.in_progress_label.setText(f"{tr('orders.in_progress')}\n{in_progress}")
     
     def load_orders(self):
         """Загружает заказы и распределяет по группам"""
         # Очищаем все группы
-        self._clear_order_layout(self.queue_layout)
-        self._clear_order_layout(self.process_layout)
-        self._clear_order_layout(self.done_layout)
+        if hasattr(self, 'queue_layout'):
+            self._clear_order_layout(self.queue_layout)
+        if hasattr(self, 'process_layout'):
+            self._clear_order_layout(self.process_layout)
+        if hasattr(self, 'done_layout'):
+            self._clear_order_layout(self.done_layout)
+        
+        # Если новый интерфейс ещё не создан, используем старый
+        if not hasattr(self, 'queue_group'):
+            self._load_orders_legacy()
+            return
         
         conn = get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
-            SELECT 
-                o.id,
-                o.created_at,
-                o.car_number,
-                o.car_model,
-                o.client_phone,
-                o.status,
-                o.total_price,
-                o.payment_method,
-                GROUP_CONCAT(s.name, ', ') as services_list
-            FROM orders o
-            LEFT JOIN order_items oi ON o.id = oi.order_id
-            LEFT JOIN services s ON oi.service_id = s.id
-            GROUP BY o.id
-            ORDER BY o.created_at ASC
-        """)
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Проверяем, нужно ли показывать все заказы
+        show_all = hasattr(self, 'show_all_checkbox') and self.show_all_checkbox.isChecked()
+        
+        if show_all:
+            cursor.execute("""
+                SELECT 
+                    o.id,
+                    o.created_at,
+                    o.car_number,
+                    o.car_model,
+                    o.client_phone,
+                    o.status,
+                    o.total_price,
+                    o.payment_method,
+                    GROUP_CONCAT(s.name, ', ') as services_list
+                FROM orders o
+                LEFT JOIN order_items oi ON o.id = oi.order_id
+                LEFT JOIN services s ON oi.service_id = s.id
+                GROUP BY o.id
+                ORDER BY o.created_at ASC
+                LIMIT 200
+            """)
+        else:
+            cursor.execute("""
+                SELECT 
+                    o.id,
+                    o.created_at,
+                    o.car_number,
+                    o.car_model,
+                    o.client_phone,
+                    o.status,
+                    o.total_price,
+                    o.payment_method,
+                    GROUP_CONCAT(s.name, ', ') as services_list
+                FROM orders o
+                LEFT JOIN order_items oi ON o.id = oi.order_id
+                LEFT JOIN services s ON oi.service_id = s.id
+                WHERE DATE(o.created_at) = ?
+                GROUP BY o.id
+                ORDER BY o.created_at ASC
+            """, (today,))
+        
         rows = cursor.fetchall()
         conn.close()
         
@@ -512,7 +704,6 @@ class CarWashMainWindow(QMainWindow):
         process_count = 0
         done_count = 0
         today_revenue = 0
-        today = datetime.now().date().isoformat()
         
         for row in rows:
             order_data = {
@@ -588,6 +779,20 @@ class CarWashMainWindow(QMainWindow):
             item = layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+    
+    def _has_visible_cards(self, layout) -> bool:
+        """Проверяет, есть ли видимые карточки в layout"""
+        if layout is None:
+            return False
+        
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
+            if item and item.widget():
+                widget = item.widget()
+                # QLabel - это заглушка "Нет заказов", её не считаем
+                if not isinstance(widget, QLabel) and not widget.isHidden():
+                    return True
+        return False
     
     def on_order_click(self, order_id: int, current_status: str):
         """Обработка клика по заказу - смена статуса"""

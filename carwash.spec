@@ -1,37 +1,49 @@
 # carwash.spec
-import os
+# -*- mode: python ; coding: utf-8 -*-
+
 import sys
-from PyInstaller.utils.hooks import collect_submodules
-
-# Получаем путь к корню проекта (работает в .spec файле)
-ROOT_DIR = os.getcwd()
-SRC_DIR = os.path.join(ROOT_DIR, 'src')
-DATA_DIR = os.path.join(ROOT_DIR, 'data')
-
-print(f"📁 ROOT_DIR: {ROOT_DIR}")
-print(f"📁 SRC_DIR: {SRC_DIR}")
-print(f"📁 DATA_DIR: {DATA_DIR}")
+import os
 
 block_cipher = None
 
 a = Analysis(
-    [os.path.join(SRC_DIR, 'main.py')],
-    pathex=[SRC_DIR, ROOT_DIR],
+    ['src/main.py'],
+    pathex=['src'],
     binaries=[],
-    datas=[
-        (DATA_DIR, 'data'),
-        (os.path.join(SRC_DIR, 'ui'), 'ui'),
-        (os.path.join(SRC_DIR, 'database.py'), '.'),
-    ],
+    datas=[('src/locales/*.json', 'locales')],
     hiddenimports=[
-        'PyQt6',
-        'PyQt6.QtWidgets',
+        'database',
+        'database.migrations',
+        'openpyxl',
+        'bcrypt',
+        'matplotlib',
+        'reportlab',
         'PyQt6.QtCore',
         'PyQt6.QtGui',
-        'sqlite3',
-        'database',
-        'ui.main_window',
-        'ui.order_form',
+        'PyQt6.QtWidgets',
+        'services',
+        'services.client_service',
+        'services.order_service',
+        'services.user_service',
+        'services.consumable_service',
+        'repositories',
+        'repositories.base',
+        'repositories.client_repo',
+        'repositories.order_repo',
+        'repositories.user_repo',
+        'repositories.consumable_repo',
+        'models',
+        'models.client',
+        'models.order',
+        'models.user',
+        'models.consumable',
+        'ui',
+        'ui.widgets',
+        'ui.dialogs',
+        'utils',
+        'license_manager',
+        'backup_manager',
+        'logger',
     ],
     hookspath=[],
     hooksconfig={},
@@ -48,22 +60,30 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
-    name='CarwashAdmin',
+    exclude_binaries=True,  # ← ВАЖНО: True для --onedir
+    name='CarWashAdmin',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon='icon.ico'
+)
+
+# ← ВАЖНО: секция COLLECT создаёт папку со всеми файлами
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='CarWashAdmin'  # ← Имя выходной папки
 )

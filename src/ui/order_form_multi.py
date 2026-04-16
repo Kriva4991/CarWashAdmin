@@ -3,9 +3,10 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox,
     QPushButton, QLabel, QMessageBox, QTextEdit,
-    QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QWidget
+    QTableWidget, QTableWidgetItem, QHeaderView,
+    QCheckBox, QWidget, QApplication
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from database import get_connection
 
 class OrderFormMultiDialog(QDialog):
@@ -287,9 +288,14 @@ class OrderFormMultiDialog(QDialog):
     
     def save_order(self):
         """Сохраняет заказ (создание или обновление)"""
+        # 🆕 Показываем индикатор загрузки
+        self.btn_save.setEnabled(False)
+        self.btn_save.setText("⏳ Сохранение...")
+        QApplication.processEvents()
+
         car_number = self.car_number_edit.text().strip()
         car_model = self.car_model_edit.text().strip()
-        client_phone = self.phone_edit.text().strip()  # ← ИСПРАВЛЕНО: phone_edit
+        client_phone = self.phone_edit.text().strip()
         car_class_id = self.car_class_combo.currentData()
         payment_method = self.payment_combo.currentText()
         comment = self.comment_edit.toPlainText().strip()
@@ -364,6 +370,7 @@ class OrderFormMultiDialog(QDialog):
                       payment_method, comment, total))
                 
                 order_id = cursor.lastrowid
+                self._last_order_id = order_id  #  Сохраняем ID для быстрого добавления
                 message = "✅ Заказ создан!"
             
             # Добавляем услуги
@@ -380,12 +387,23 @@ class OrderFormMultiDialog(QDialog):
             client_service = ClientService()
             client_service.invalidate_cache()
             
+            # Восстанавливаем кнопку перед показом сообщения
+            self.btn_save.setEnabled(True)
+            self.btn_save.setText("💾 Сохранить")
+            
             QMessageBox.information(self, "Успешно", message)
             self.accept()
             
         except Exception as e:
             conn.rollback()
+            # Восстанавливаем кнопку при ошибке
+            self.btn_save.setEnabled(True)
+            self.btn_save.setText("💾 Сохранить")
             QMessageBox.critical(self, "Ошибка", f"Не удалось сохранить заказ:\n{e}")
         
         finally:
             conn.close()
+    
+    def get_last_order_id(self):
+        """Возвращает ID последнего созданного заказа"""
+        return getattr(self, '_last_order_id', None)

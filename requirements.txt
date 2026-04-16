@@ -3,3 +3,4 @@ PyQt6-Qt6
 bcrypt
 matplotlib
 reportlab
+openpyxl

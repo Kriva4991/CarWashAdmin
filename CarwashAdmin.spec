@@ -3,10 +3,10 @@
 
 a = Analysis(
     ['src\\main.py'],
-    pathex=[],
+    pathex=['src'],
     binaries=[],
-    datas=[('data', 'data'), ('src/ui', 'ui'), ('src/database.py', '.')],
-    hiddenimports=['sqlite3', 'bcrypt', 'matplotlib', 'matplotlib.backends.backend_qt5agg', 'reportlab', 'reportlab.lib', 'reportlab.platypus', 'database', 'ui.main_window', 'ui.order_form_multi', 'ui.login_dialog', 'ui.services_editor', 'ui.shift_manager', 'ui.reports_tab', 'ui.clients_tab', 'ui.settings_tab'],
+    datas=[('src/locales', 'locales')],
+    hiddenimports=['database', 'database.migrations', 'openpyxl', 'bcrypt', 'matplotlib', 'reportlab'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -19,9 +19,9 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    [],
+    [('v', None, 'OPTION')],
     exclude_binaries=True,
-    name='CarwashAdmin',
+    name='CarWashAdmin',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -41,5 +41,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='CarwashAdmin',
+    name='CarWashAdmin',
 )

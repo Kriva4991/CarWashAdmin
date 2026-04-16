@@ -135,7 +135,7 @@ class SettingsTab(QWidget):
         backup_group.layout().addLayout(backup_layout)
         main_layout.addWidget(backup_group)
 
-                # === ГРУППА: АВТООБНОВЛЕНИЕ ===
+        # === ГРУППА: АВТООБНОВЛЕНИЕ ===
         update_group = self.create_group("🔄 Автообновление")
         update_layout = QVBoxLayout()
         
@@ -196,61 +196,6 @@ class SettingsTab(QWidget):
         update_layout.addLayout(update_btn_layout)
         update_group.layout().addLayout(update_layout)
         main_layout.addWidget(update_group)
-        
-        # --- БЕЗОПАСНОСТЬ ---
-        if self.user and self.user.role.value == 'admin':
-            security_group = self.create_group(tr("settings.security"))
-            security_layout = QGridLayout()
-            security_layout.setSpacing(10)
-            
-            security_layout.addWidget(QLabel(tr("settings.current_password") + ":"), 0, 0)
-            self.current_password_edit = QLineEdit()
-            self.current_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-            self.current_password_edit.setPlaceholderText(tr("login.current_password_placeholder", default="Введите текущий пароль"))
-            self.current_password_edit.setStyleSheet(self.get_input_style())
-            self.current_password_edit.setFixedWidth(300)
-            security_layout.addWidget(self.current_password_edit, 0, 1)
-            
-            security_layout.addWidget(QLabel(tr("settings.new_password") + ":"), 1, 0)
-            self.new_password_edit = QLineEdit()
-            self.new_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-            self.new_password_edit.setPlaceholderText(tr("login.new_password_placeholder", default="Минимум 6 символов"))
-            self.new_password_edit.setStyleSheet(self.get_input_style())
-            self.new_password_edit.setFixedWidth(300)
-            security_layout.addWidget(self.new_password_edit, 1, 1)
-            
-            security_layout.addWidget(QLabel(tr("settings.confirm_password") + ":"), 2, 0)
-            self.confirm_password_edit = QLineEdit()
-            self.confirm_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-            self.confirm_password_edit.setPlaceholderText(tr("login.confirm_password_placeholder", default="Повторите новый пароль"))
-            self.confirm_password_edit.setStyleSheet(self.get_input_style())
-            self.confirm_password_edit.setFixedWidth(300)
-            security_layout.addWidget(self.confirm_password_edit, 2, 1)
-            
-            # Кнопка смены пароля
-            btn_layout = QHBoxLayout()
-            btn_layout.addStretch()
-            self.btn_change_password = QPushButton(tr("settings.change_password"))
-            self.btn_change_password.setFixedWidth(200)
-            self.btn_change_password.clicked.connect(self.change_password)
-            self.btn_change_password.setStyleSheet("""
-                QPushButton {
-                    background-color: #e67e22;
-                    color: white;
-                    padding: 10px 20px;
-                    font-weight: bold;
-                    border-radius: 5px;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #d35400;
-                }
-            """)
-            btn_layout.addWidget(self.btn_change_password)
-            security_layout.addLayout(btn_layout, 3, 0, 1, 2)
-            
-            security_group.layout().addLayout(security_layout)
-            main_layout.addWidget(security_group)
 
         # --- ПОЛЬЗОВАТЕЛИ (только для админа) ---
         if self.user and self.user.role.value == 'admin':
@@ -299,6 +244,36 @@ class SettingsTab(QWidget):
             
             users_group.layout().addLayout(users_layout)
             main_layout.addWidget(users_group)
+        
+                # --- ТЕСТОВЫЕ ДАННЫЕ (только для админа) ---
+        if self.user and self.user.role.value == 'admin':
+            test_data_group = self.create_group("🧪 Тестовые данные")
+            test_data_layout = QVBoxLayout()
+            
+            test_info = QLabel("Генерация демонстрационных данных для тестирования")
+            test_info.setStyleSheet("font-size: 13px; color: #7f8c8d; padding: 5px 0;")
+            test_data_layout.addWidget(test_info)
+            
+            btn_generate = QPushButton("🚀 Сгенерировать тестовые данные")
+            btn_generate.setStyleSheet("""
+                QPushButton {
+                    background-color: #e67e22;
+                    color: white;
+                    padding: 12px 20px;
+                    border: none;
+                    border-radius: 5px;
+                    font-weight: bold;
+                    font-size: 14px;
+                }
+                QPushButton:hover {
+                    background-color: #d35400;
+                }
+            """)
+            btn_generate.clicked.connect(self.generate_test_data)
+            test_data_layout.addWidget(btn_generate)
+            
+            test_data_group.layout().addLayout(test_data_layout)
+            main_layout.addWidget(test_data_group)
         
         # --- КОМПАНИЯ ---
         if self.user and self.user.has_permission('edit_settings'):
@@ -804,12 +779,16 @@ class SettingsTab(QWidget):
         
         info = self.license_manager.get_license_info()
         
-        # Проверяем, что элементы существуют
         if not hasattr(self, 'license_info_label'):
             return
         
+        # 🆕 Скрываем ключ, показываем только маску
         if info['status'] == 'lifetime':
-            self.license_info_label.setText(info['message'])
+            # Показываем только тип лицензии, ключ скрыт
+            masked_key = self._mask_license_key(info.get('key', ''))
+            display_text = f"✅ Бессрочная лицензия\nКлюч: {masked_key}"
+            
+            self.license_info_label.setText(display_text)
             self.license_info_label.setStyleSheet(
                 "font-size: 13px; color: #27ae60; padding: 10px; "
                 "background-color: #e8f5e9; border-radius: 5px;"
@@ -822,14 +801,21 @@ class SettingsTab(QWidget):
                 self.btn_deactivate_license.setEnabled(True)
             
         elif info['status'] == 'trial':
-            self.license_info_label.setText(info['message'])
-            if info['days_left'] and info['days_left'] <= 7:
+            masked_key = self._mask_license_key(info.get('key', ''))
+            days_left = info.get('days_left', 0)
+            
+            if days_left <= 7:
                 color = "#e74c3c"
                 bg = "#fdedec"
+                status_text = "⚠️ Пробный период"
             else:
                 color = "#f39c12"
                 bg = "#fef9e7"
+                status_text = "⏳ Пробный период"
             
+            display_text = f"{status_text}\nКлюч: {masked_key}\nОсталось дней: {days_left}"
+            
+            self.license_info_label.setText(display_text)
             self.license_info_label.setStyleSheet(
                 f"font-size: 13px; color: {color}; padding: 10px; "
                 f"background-color: {bg}; border-radius: 5px;"
@@ -866,6 +852,21 @@ class SettingsTab(QWidget):
                 self.btn_activate_license.setEnabled(True)
             if hasattr(self, 'btn_deactivate_license'):
                 self.btn_deactivate_license.setEnabled(False)
+    
+    def _mask_license_key(self, key: str) -> str:
+        """Маскирует лицензионный ключ, показывая только первые и последние символы"""
+        if not key:
+            return "—"
+        
+        parts = key.split('-')
+        if len(parts) >= 5:
+            # CW-LIFE-XXXX-XXXX-CCCC -> CW-LIFE-****-****-CCCC
+            return f"{parts[0]}-{parts[1]}-****-****-{parts[4]}"
+        elif len(key) > 8:
+            # Показываем первые 4 и последние 4 символа
+            return f"{key[:4]}...{key[-4:]}"
+        else:
+            return "****"
     
     def activate_license(self):
         """Активирует лицензию"""
@@ -1003,4 +1004,33 @@ class SettingsTab(QWidget):
                 self,
                 "✅ Обновлений нет",
                 f"У вас установлена последняя версия ({checker.current_version})!"
+            )
+
+    def generate_test_data(self):
+        """Генерирует тестовые данные"""
+        reply = QMessageBox.question(
+            self,
+            "🧪 Генерация тестовых данных",
+            "Будут созданы тестовые клиенты и заказы.\n\n"
+            "Существующие данные НЕ будут удалены.\n"
+            "Продолжить?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            from utils.test_data_generator import TestDataGenerator
+            
+            generator = TestDataGenerator()
+            generator.generate_all(clients=30, orders=100)
+            generator.close()
+            
+            QMessageBox.information(
+                self,
+                "✅ Готово",
+                "Тестовые данные успешно сгенерированы!\n\n"
+                "Создано:\n"
+                "👤 30 клиентов\n"
+                "📋 100 заказов\n"
+                "🧴 Списания расходников\n\n"
+                "Перезайдите во вкладки для обновления."
             )
