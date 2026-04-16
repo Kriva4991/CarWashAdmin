@@ -1,0 +1,15 @@
+{
+    "version": "3.0.0",
+    "release_date": "2026-04-16",
+    "download_url": "https://github.com/ТВОЙ_ЮЗЕРНЕЙМ/CarWashAdmin/releases/latest/download/CarWashAdmin_Setup.exe",
+    "min_required": "2.0.0",
+    "file_size": 15728640,
+    "changelog": [
+        "✨ Добавлена система ролей и прав доступа",
+        "🧴 Добавлен учёт расходных материалов",
+        "🌐 Добавлена поддержка английского языка",
+        "📊 Добавлен экспорт в Excel",
+        "📋 Улучшен интерфейс заказов",
+        "🔧 Исправлены ошибки"
+    ]
+}
